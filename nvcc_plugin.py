@@ -5,6 +5,7 @@ import argparse
 import tempfile
 import subprocess
 import IPython.core.magic as ipym
+import traceback
 
 compiler = '/usr/local/cuda/bin/nvcc'
 ext = '.cu'
@@ -14,6 +15,8 @@ def get_argparser():
     parser = argparse.ArgumentParser(description='NVCCPlugin params')
     parser.add_argument("-t", "--timeit", action='store_true',
                         help='flag to return timeit result instead of stdout')
+    parser.add_argument("-f", "--filepath", action='store_true',
+                        help='store the file in the mentioned path instead of temp file')
     return parser
 
 
@@ -45,8 +48,9 @@ class NVCCPlugin(ipym.Magics):
             self.argparser.print_help()
             return
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            file_path = os.path.join(tmp_dir, str(uuid.uuid4()))
+        try:
+            file_path=args.filepath
+            
             with open(file_path + ext, "w") as f:
                 f.write(cell)
             try:
@@ -54,7 +58,20 @@ class NVCCPlugin(ipym.Magics):
                 output = self.run(file_path, timeit=args.timeit)
             except subprocess.CalledProcessError as e:
                 print(e.output.decode("utf8"))
-                output = None
+                output = None 
+        except Exception as e:
+            print("storing code in temp file due to {}".format(traceback.format_exc()))
+
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                file_path = os.path.join(tmp_dir, str(uuid.uuid4()))
+                with open(file_path + ext, "w") as f:
+                    f.write(cell)
+                try:
+                    self.compile(file_path)
+                    output = self.run(file_path, timeit=args.timeit)
+                except subprocess.CalledProcessError as e:
+                    print(e.output.decode("utf8"))
+                    output = None
         return output
 
 
